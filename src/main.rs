@@ -1,6 +1,26 @@
+use std::env;
 use std::fs::File;
 use std::io::Write;
+
 fn main() -> std::io::Result<()> {
+    let mut args = env::args().skip(1);
+    let mut output_file = String::from("a.out"); // Default output file
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "-o" => {
+                output_file = args.next().unwrap_or_else(|| {
+                    eprintln!("Error: -o requires a filename");
+                    std::process::exit(1);
+                });
+            }
+            _ => {
+                eprintln!("Error: Unexpected argument '{}'", arg);
+                std::process::exit(1);
+            }
+        }
+    }
+
     let data = [
         /* 00000000: */ 0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000010: */ 0x01, 0x00, 0x3e, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -30,6 +50,6 @@ fn main() -> std::io::Result<()> {
         /* 0x000190: */ 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
 
-    File::create("empty.o")?.write_all(&data)?;
+    File::create(output_file)?.write_all(&data)?;
     Ok(())
 }

@@ -2,13 +2,13 @@ use std::fs;
 use std::process::Command;
 use std::io::Read;
 use tempfile::tempdir;
-use std::env;
 
 #[test]
 fn test_object_generation_for_empty_file() {
     let dir = tempdir().expect("Failed to create temp directory");
     let empty_asm = dir.path().join("empty.s");
     let gcc_object_file = dir.path().join("empty.gcc.o");
+    let ras_object_file = dir.path().join("empty.ras.o");
 
     // Create an empty assembly file
     fs::File::create(&empty_asm).expect("Failed to create empty.s");
@@ -26,13 +26,12 @@ fn test_object_generation_for_empty_file() {
 
     // Generate object file by ras
     let ras_status = Command::new("target/debug/ras")
+        .arg("-o")
+        .arg(&ras_object_file)
         .status()
         .expect("Failed to run ras");
 
     assert!(ras_status.success(), "ras failed to generate object file");
-
-    let ras_object_file = env::current_dir().unwrap().join("empty.o");
-    assert!(ras_object_file.exists(), "Expected assembler output file '{}' was not found", ras_object_file.display());
 
     let mut gcc_object_bytes = Vec::new();
     let mut ras_object_bytes = Vec::new();
@@ -47,6 +46,4 @@ fn test_object_generation_for_empty_file() {
         .expect("Failed to read ras output file");
 
     assert_eq!(gcc_object_bytes, ras_object_bytes, "Object files do not match!");
-
-    fs::remove_file(&ras_object_file).expect("Failed to delete assembler output file");
 }
