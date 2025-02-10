@@ -2,21 +2,19 @@ use std::fs;
 use std::process::Command;
 use std::io::Read;
 use tempfile::tempdir;
+use std::path::Path;
 
 #[test]
-fn test_object_generation_for_empty_file() {
+fn test_object_generation() {
     let dir = tempdir().expect("Failed to create temp directory");
-    let empty_asm = dir.path().join("empty.s");
-    let gcc_object_file = dir.path().join("empty.gcc.o");
-    let ras_object_file = dir.path().join("empty.ras.o");
-
-    // Create an empty assembly file
-    fs::File::create(&empty_asm).expect("Failed to create empty.s");
+    let asm = Path::new("tests/inputs/exit_code.s");
+    let gcc_object_file = dir.path().join("gcc.o");
+    let ras_object_file = dir.path().join("ras.o");
 
     // Generate refeence object file by GCC
     let gcc_status = Command::new("gcc")
         .arg("-c")
-        .arg(&empty_asm)
+        .arg(&asm)
         .arg("-o")
         .arg(&gcc_object_file)
         .status()
