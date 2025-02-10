@@ -24,6 +24,8 @@ fn test_object_generation() {
 
     // Generate object file by ras
     let ras_status = Command::new("target/debug/ras")
+        .arg("-c")
+        .arg(&asm)
         .arg("-o")
         .arg(&ras_object_file)
         .status()

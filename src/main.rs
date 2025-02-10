@@ -1,16 +1,96 @@
 use std::env;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process;
+
+#[derive(Debug, PartialEq)]
+enum Token {
+    Directive(String),
+    Label(String),
+    Instruction(String, Vec<String>),
+}
+
+fn tokenize(input: &str) -> Vec<Token> {
+    let mut tokens = Vec::new();
+
+    for line in input.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+
+        if line.starts_with('.') {
+            tokens.push(Token::Directive(line.to_string()));
+        } else if line.ends_with(':') {
+            tokens.push(Token::Label(line.trim_end_matches(':').to_string()));
+        } else {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() {
+                let opcode   = parts[0].to_string();
+                let operands = parts[1..].iter().map(|s| s.trim_end_matches(',').to_string()).collect();
+                tokens.push(Token::Instruction(opcode, operands));
+            }
+        }
+    }
+
+    tokens
+}
+
+#[derive(Debug)]
+enum Node {
+    Directive(String),
+    Label(String),
+    Instruction { opcode: String, operands: Vec<String> },
+}
+
+fn parse(tokens: Vec<Token>) -> Vec<Node> {
+    let mut tree = Vec::new();
+
+    for token in tokens {
+        match token {
+            Token::Directive(dir) => tree.push(Node::Directive(dir)),
+            Token::Label(label) => tree.push(Node::Label(label)),
+            Token::Instruction(opcode, operands) =>  {
+                tree.push(Node::Instruction { opcode, operands });
+            }
+        }
+    }
+
+    tree
+}
+
+fn encode_instruction(opcode: &str, operands: &[String]) -> Vec<u8> {
+    match (opcode, operands) {
+        ("mov", [reg, imm]) if reg == "rax" => {
+            let imm64: u8 = imm.parse().expect("Invalid immediate value");
+            vec![0x48, 0xc7, 0xc0, imm64, 0x00, 0x00, 0x00]
+        }
+        ("ret", []) => vec![0xc3],
+        _ => panic!("Unknown instruction"),
+    }
+}
+
+fn generate_machine_code(ast: &[Node]) -> Vec<u8> {
+    let mut code = Vec::new();
+
+    for node in ast {
+        if let Node::Instruction { opcode, operands } = node {
+            code.extend(encode_instruction(&opcode, &operands));
+        }
+    }
+
+    code
+}
 
 fn main() -> std::io::Result<()> {
     let mut args = env::args().skip(1);
-    let mut input_file  = None;
+    let mut input_file: Option<PathBuf> = None;
     let mut output_file = String::from("a.out"); // Default output file
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-c" => {
-                input_file = Some(arg);
+                input_file = args.next().map(PathBuf::from);
             }
             "-o" => {
                 output_file = args.next().unwrap_or_else(|| {
@@ -20,7 +100,7 @@ fn main() -> std::io::Result<()> {
             }
             _ => {
                 if input_file.is_none() {
-                    input_file = Some(arg);
+                    input_file = Some(PathBuf::from(arg));
                 } else {
                     eprintln!("Error: Unexpected argument '{}'", arg);
                     std::process::exit(1);
@@ -29,18 +109,45 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    let data = [
+    let input_file = input_file.expect("No input file specified");
+
+    let source = fs::read_to_string(&input_file).unwrap_or_else(|err| {
+        eprintln!("Error: Failed to read file {}: {}", input_file.display(), err);
+        process::exit(1);
+    });
+
+    let tokens = tokenize(&source);
+    let ast = parse(tokens);
+    let machine_code = generate_machine_code(&ast);
+
+    #[cfg(FALSE)]
+    {
+        println!("Generated Machine Code:");
+        for (i, byte) in machine_code.iter().enumerate() {
+            print!("{:02X} ", byte);
+            if (i + 1) % 16 == 0 {
+                println!();
+            }
+        }
+        println!();
+    }
+
+    let mut data = vec![
         /* 00000000: */ 0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000010: */ 0x01, 0x00, 0x3e, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000020: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000030: */ 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x07, 0x00, 0x06, 0x00,
-        /* 00000040: */ 0x48, 0xc7, 0xc0, 0x2a, 0x00, 0x00, 0x00, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        //              .text
+        /* 00000040: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        //              .symtab
         /* 00000050: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000060: */ 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 0x000070: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x61, 0x69, 0x6e, 0x00, 0x00, 0x2e,
+        //              .shstrtab
         /* 0x000080: */ 0x73, 0x79, 0x6d, 0x74, 0x61, 0x62, 0x00, 0x2e, 0x73, 0x74, 0x72, 0x74, 0x61, 0x62, 0x00, 0x2e,
         /* 00000090: */ 0x73, 0x68, 0x73, 0x74, 0x72, 0x74, 0x61, 0x62, 0x00, 0x2e, 0x74, 0x65, 0x78, 0x74, 0x00, 0x2e,
         /* 000000a0: */ 0x64, 0x61, 0x74, 0x61, 0x00, 0x2e, 0x62, 0x73, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        //              null section header
         /* 0x0000b0: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 0x0000c0: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 0x0000d0: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -76,6 +183,11 @@ fn main() -> std::io::Result<()> {
         /* 00000250: */ 0x2c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         /* 00000260: */ 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
+
+    let text_section_offset = 0x40;
+
+    // Insert machine code into `.text` section
+    data.splice(text_section_offset..text_section_offset + machine_code.len(), machine_code.iter().cloned());
 
     File::create(output_file)?.write_all(&data)?;
     Ok(())
