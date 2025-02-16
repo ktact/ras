@@ -14,7 +14,7 @@ use elf::strtab::{StrTab};
 
 #[derive(Debug, PartialEq)]
 enum Token {
-    Directive(String),
+    Directive(String, String),
     Label(String),
     Instruction(String, Vec<String>),
 }
@@ -27,7 +27,12 @@ fn tokenize(input: &str) -> Vec<Token> {
         if line.is_empty() { continue; }
 
         if line.starts_with('.') {
-            tokens.push(Token::Directive(line.to_string()));
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() {
+                let pseudo_op = parts[0].to_string();
+                let symbol    = parts[1].to_string();
+                tokens.push(Token::Directive(pseudo_op, symbol));
+            }
         } else if line.ends_with(':') {
             tokens.push(Token::Label(line.trim_end_matches(':').to_string()));
         } else {
@@ -45,7 +50,7 @@ fn tokenize(input: &str) -> Vec<Token> {
 
 #[derive(Debug)]
 enum Node {
-    Directive(String),
+    Directive { pseudo_op: String, symbol: String },
     Label(String),
     Instruction { opcode: String, operands: Vec<String> },
 }
@@ -55,7 +60,9 @@ fn parse(tokens: Vec<Token>) -> Vec<Node> {
 
     for token in tokens {
         match token {
-            Token::Directive(dir) => tree.push(Node::Directive(dir)),
+            Token::Directive(pseudo_op, symbol) => {
+                tree.push(Node::Directive { pseudo_op, symbol });
+            }
             Token::Label(label) => tree.push(Node::Label(label)),
             Token::Instruction(opcode, operands) =>  {
                 tree.push(Node::Instruction { opcode, operands });
@@ -154,17 +161,23 @@ fn main() -> std::io::Result<()> {
     }
 
     let mut strtab = StrTab::new();
-    strtab.add_str("main");
-
     let mut symtab = SymTab::new();
-    symtab.add_symbol(
-        strtab.get_offset_by("main").unwrap(),
-        SymType::NoType,
-        SymBind::Global,
-        SymVis::Default,
-        1,
-        0x0000000000000000,
-        0);
+    for node in ast {
+        if let Node::Directive { pseudo_op, symbol } = node {
+            if pseudo_op == ".global" {
+                strtab.add_str(&symbol);
+                symtab.add_symbol(
+                    strtab.get_offset_by(&symbol).unwrap_or(0),
+                    SymType::NoType,
+                    SymBind::Global,
+                    SymVis::Default,
+                    1,
+                    0x0000000000000000,
+                    0
+                );
+            }
+        }
+    }
 
     let mut elf_header = Elf64Header::new();
     let mut shs: Vec<Elf64SectionHeader> = Vec::new();
