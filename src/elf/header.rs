@@ -51,6 +51,10 @@ impl Elf64Header {
         self.e_shnum = section_count;
     }
 
+    pub fn set_shstrndx(&mut self, index: u16) {
+        self.e_shstrndx = index;
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
