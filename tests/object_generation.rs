@@ -4,17 +4,15 @@ use std::io::Read;
 use tempfile::tempdir;
 use std::path::Path;
 
-#[test]
-fn test_object_generation() {
+fn compare_object_files(asm_file: &Path) {
     let dir = tempdir().expect("Failed to create temp directory");
-    let asm = Path::new("tests/inputs/exit_code.s");
     let gcc_object_file = dir.path().join("gcc.o");
     let ras_object_file = dir.path().join("ras.o");
 
     // Generate refeence object file by GCC
     let gcc_status = Command::new("gcc")
         .arg("-c")
-        .arg(&asm)
+        .arg(asm_file)
         .arg("-o")
         .arg(&gcc_object_file)
         .status()
@@ -25,7 +23,7 @@ fn test_object_generation() {
     // Generate object file by ras
     let ras_status = Command::new("target/debug/ras")
         .arg("-c")
-        .arg(&asm)
+        .arg(asm_file)
         .arg("-o")
         .arg(&ras_object_file)
         .status()
@@ -46,4 +44,14 @@ fn test_object_generation() {
         .expect("Failed to read ras output file");
 
     assert_eq!(gcc_object_bytes, ras_object_bytes, "Object files do not match!");
+}
+
+#[test]
+fn test_42() {
+    compare_object_files(Path::new("tests/inputs/42.s"));
+}
+
+#[test]
+fn test_empty_file() {
+    compare_object_files(Path::new("tests/inputs/empty.s"));
 }
