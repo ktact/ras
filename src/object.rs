@@ -74,7 +74,8 @@ pub fn build_object(ast: &[Node], machine_code: &[u8]) -> Vec<u8> {
         sh_offset = sh_offset + contents.len() as u64;
     }
 
-    let padding_size = 16 - (sh_offset % 16);
+    // Section headers are aligned to 8 bytes, as GNU as does for ELF64.
+    let padding_size = (8 - sh_offset % 8) % 8;
     let shoff = sh_offset + padding_size;
 
     elf_header.set_shoff(shoff, shs.len() as u16);
