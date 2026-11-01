@@ -80,6 +80,10 @@ impl Elf64SectionHeader {
         self.sh_name = name_index;
     }
 
+    pub fn set_offset(&mut self, offset: u64) {
+        self.sh_offset = offset;
+    }
+
     pub fn set_size(&mut self, size: u64) {
         self.sh_size = size;
     }

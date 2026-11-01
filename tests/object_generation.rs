@@ -65,3 +65,8 @@ fn test_shoff_already_aligned() {
 fn test_shoff_aligned_to_8() {
     compare_object_files(Path::new("tests/inputs/shoff_aligned_to_8.s"));
 }
+
+#[test]
+fn test_symtab_alignment() {
+    compare_object_files(Path::new("tests/inputs/symtab_alignment.s"));
+}

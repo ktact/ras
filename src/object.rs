@@ -59,7 +59,9 @@ pub fn build_object(ast: &[Node], machine_code: &[u8]) -> Vec<u8> {
     let mut sh_offset = elf_header.as_bytes().len() as u64;
 
     for (name, sh_type, flags, contents) in &sections {
-        let mut sh = Elf64SectionHeader::new(*sh_type, *flags, sh_offset);
+        let mut sh = Elf64SectionHeader::new(*sh_type, *flags, 0);
+        sh_offset = align_up(sh_offset, sh.sh_addralign);
+        sh.set_offset(sh_offset);
         if let Some(offset) = shstrtab.get_offset_by(name) {
             sh.set_name_index(offset);
         }
@@ -75,22 +77,29 @@ pub fn build_object(ast: &[Node], machine_code: &[u8]) -> Vec<u8> {
     }
 
     // Section headers are aligned to 8 bytes, as GNU as does for ELF64.
-    let padding_size = (8 - sh_offset % 8) % 8;
-    let shoff = sh_offset + padding_size;
+    let shoff = align_up(sh_offset, 8);
 
     elf_header.set_shoff(shoff, shs.len() as u16);
     // .shstrtab is always the last section.
     elf_header.set_shstrndx((shs.len() - 1) as u16);
 
     let mut output = elf_header.as_bytes().to_vec();
-    for (_, _, _, contents) in &sections {
+    for ((_, _, _, contents), sh) in sections.iter().zip(&shs[1..]) {
+        output.resize(sh.sh_offset as usize, 0);
         output.extend_from_slice(contents);
     }
-    output.resize(output.len() + padding_size as usize, 0);
+    output.resize(shoff as usize, 0);
 
     for sh in &shs {
         output.extend_from_slice(sh.as_bytes());
     }
 
     output
+}
+
+fn align_up(offset: u64, align: u64) -> u64 {
+    if align <= 1 {
+        return offset;
+    }
+    offset.div_ceil(align) * align
 }
