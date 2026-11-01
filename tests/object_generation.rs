@@ -18,7 +18,8 @@ fn assemble(assembler: &str, asm_file: &Path, object_file: &Path) -> Vec<u8> {
     fs::read(object_file).unwrap_or_else(|err| panic!("Failed to read {}: {}", object_file.display(), err))
 }
 
-fn compare_object_files(asm_file: &Path) {
+fn compare_object_files(input_name: &str) {
+    let asm_file = &Path::new("tests/inputs").join(input_name);
     let dir = tempdir().expect("Failed to create temp directory");
 
     // gcc's output is the reference
@@ -30,25 +31,25 @@ fn compare_object_files(asm_file: &Path) {
 
 #[test]
 fn test_42() {
-    compare_object_files(Path::new("tests/inputs/42.s"));
+    compare_object_files("42.s");
 }
 
 #[test]
 fn test_empty_file() {
-    compare_object_files(Path::new("tests/inputs/empty.s"));
+    compare_object_files("empty.s");
 }
 
 #[test]
 fn test_shoff_already_aligned() {
-    compare_object_files(Path::new("tests/inputs/shoff_already_aligned.s"));
+    compare_object_files("shoff_already_aligned.s");
 }
 
 #[test]
 fn test_shoff_aligned_to_8() {
-    compare_object_files(Path::new("tests/inputs/shoff_aligned_to_8.s"));
+    compare_object_files("shoff_aligned_to_8.s");
 }
 
 #[test]
 fn test_symtab_alignment() {
-    compare_object_files(Path::new("tests/inputs/symtab_alignment.s"));
+    compare_object_files("symtab_alignment.s");
 }
