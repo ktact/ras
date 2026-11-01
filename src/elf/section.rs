@@ -52,12 +52,6 @@ impl Elf64SectionHeader {
             _ => 1,
         };
 
-        let sh_link = match sh_type {
-            // Symtab.sh_link should point to the index of StrTab.
-            SectionType::SymTab => 5,
-            _ => 0,
-        };
-
         let sh_info = match sh_type {
             SectionType::SymTab => 1,
             _ => 0,
@@ -75,7 +69,7 @@ impl Elf64SectionHeader {
             sh_addr: 0,
             sh_offset,
             sh_size: 0,
-            sh_link,
+            sh_link: 0,
             sh_info,
             sh_addralign,
             sh_entsize,
@@ -88,6 +82,10 @@ impl Elf64SectionHeader {
 
     pub fn set_size(&mut self, size: u64) {
         self.sh_size = size;
+    }
+
+    pub fn set_link(&mut self, link: u32) {
+        self.sh_link = link;
     }
 
     pub fn as_bytes(&self) -> &[u8] {

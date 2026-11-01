@@ -192,6 +192,11 @@ fn main() -> std::io::Result<()> {
             sh.set_name_index(offset);
         }
         sh.set_size(contents.len() as u64);
+        if let SectionType::SymTab = sh_type {
+            // .symtab's sh_link points to the index of .strtab (+1 for the NULL section).
+            let strtab_index = sections.iter().position(|(n, ..)| *n == ".strtab").unwrap() + 1;
+            sh.set_link(strtab_index as u32);
+        }
         shs.push(sh);
 
         sh_offset = sh_offset + contents.len() as u64;
