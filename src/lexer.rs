@@ -16,7 +16,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if !parts.is_empty() {
                 let pseudo_op = parts[0].to_string();
-                let symbol    = parts[1].to_string();
+                let symbol    = parts.get(1).unwrap_or(&"").to_string();
                 tokens.push(Token::Directive(pseudo_op, symbol));
             }
         } else if line.ends_with(':') {

@@ -35,7 +35,10 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    let input_file = input_file.expect("No input file specified");
+    let input_file = input_file.unwrap_or_else(|| {
+        eprintln!("Error: No input file specified");
+        process::exit(1);
+    });
 
     let source = fs::read_to_string(&input_file).unwrap_or_else(|err| {
         eprintln!("Error: Failed to read file {}: {}", input_file.display(), err);
