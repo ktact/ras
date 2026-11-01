@@ -166,93 +166,50 @@ fn main() -> std::io::Result<()> {
     }
     let shstrtab = ShStrTab::new(&section_names);
 
-    let mut elf_header = Elf64Header::new();
-    let mut shs: Vec<Elf64SectionHeader> = Vec::new();
-    let mut shstr_index = 0;
+    let alloc = SectionFlags::Alloc as u64;
+    let write = SectionFlags::Write as u64;
+    let exec  = SectionFlags::ExecInstr as u64;
 
-    // NULL Section Header
-    let null_sh = Elf64SectionHeader::new(SectionType::Null, 0 as u64, 0);
-    shs.push(null_sh);
-    shstr_index = shstr_index + 1;
-
-    let mut sh_offset: u64 = elf_header.as_bytes().len().try_into().unwrap();
-
-    // .text Section Header
-    let mut text_sh = Elf64SectionHeader::new(SectionType::ProgBits, SectionFlags::Alloc as u64 | SectionFlags::ExecInstr as u64, sh_offset);
-    if let Some(offset) = shstrtab.get_offset_by(".text") {
-        text_sh.set_name_index(offset);
-    }
-    text_sh.set_size(machine_code.len() as u64);
-    shs.push(text_sh);
-    shstr_index = shstr_index + 1;
-
-    sh_offset = sh_offset + machine_code.len() as u64;
-
-    // .data Section Header
-    let mut data_sh = Elf64SectionHeader::new(SectionType::ProgBits, SectionFlags::Write as u64 | SectionFlags::Alloc as u64, sh_offset);
-    if let Some(offset) = shstrtab.get_offset_by(".data") {
-        data_sh.set_name_index(offset);
-    }
-    shs.push(data_sh);
-    shstr_index = shstr_index + 1;
-
-    // .bss Section Header
-    let mut bss_sh = Elf64SectionHeader::new(SectionType::NoBits,   SectionFlags::Write as u64 | SectionFlags::Alloc as u64, sh_offset);
-    if let Some(offset) = shstrtab.get_offset_by(".bss") {
-        bss_sh.set_name_index(offset);
-    }
-    shs.push(bss_sh);
-    shstr_index = shstr_index + 1;
-
-    // .symtab Section Header
+    // (name, type, flags, contents) in section header order
+    let mut sections: Vec<(&str, SectionType, u64, Vec<u8>)> = vec![
+        (".text", SectionType::ProgBits, alloc | exec,  machine_code.clone()),
+        (".data", SectionType::ProgBits, write | alloc, Vec::new()),
+        (".bss",  SectionType::NoBits,   write | alloc, Vec::new()),
+    ];
     if section_names.contains(&".symtab") {
-        let mut symtab_sh = Elf64SectionHeader::new(SectionType::SymTab,   0 as u64, sh_offset);
-        if let Some(offset) = shstrtab.get_offset_by(".symtab") {
-            symtab_sh.set_name_index(offset);
+        sections.push((".symtab", SectionType::SymTab, 0, symtab.as_bytes()));
+        sections.push((".strtab", SectionType::StrTab, 0, strtab.as_bytes().to_vec()));
+    }
+    sections.push((".shstrtab", SectionType::StrTab, 0, shstrtab.as_bytes().to_vec()));
+
+    let mut elf_header = Elf64Header::new();
+    let mut shs = vec![Elf64SectionHeader::new(SectionType::Null, 0, 0)];
+    let mut sh_offset = elf_header.as_bytes().len() as u64;
+
+    for (name, sh_type, flags, contents) in &sections {
+        let mut sh = Elf64SectionHeader::new(*sh_type, *flags, sh_offset);
+        if let Some(offset) = shstrtab.get_offset_by(name) {
+            sh.set_name_index(offset);
         }
-        symtab_sh.set_size(symtab.as_bytes().len() as u64);
-        shs.push(symtab_sh);
-        shstr_index = shstr_index + 1;
+        sh.set_size(contents.len() as u64);
+        shs.push(sh);
 
-        sh_offset = sh_offset + symtab.as_bytes().len() as u64;
+        sh_offset = sh_offset + contents.len() as u64;
     }
 
-    // .strtab Section Header
-    if section_names.contains(&".strtab") {
-        let mut strtab_sh = Elf64SectionHeader::new(SectionType::StrTab,   0 as u64, sh_offset);
-        if let Some(offset) = shstrtab.get_offset_by(".strtab") {
-            strtab_sh.set_name_index(offset);
-        }
-        strtab_sh.set_size(strtab.as_bytes().len() as u64);
-        shs.push(strtab_sh);
-        shstr_index = shstr_index + 1;
-
-        sh_offset = sh_offset + strtab.as_bytes().len() as u64;
-    }
-
-    // .shstrtab Section Header
-    let mut shstrtab_sh = Elf64SectionHeader::new(SectionType::StrTab,   0 as u64, sh_offset);
-    if let Some(offset) = shstrtab.get_offset_by(".shstrtab") {
-        shstrtab_sh.set_name_index(offset);
-    }
-    shstrtab_sh.set_size(shstrtab.as_bytes().len() as u64);
-    shs.push(shstrtab_sh);
-    sh_offset = sh_offset + shstrtab.as_bytes().len() as u64;
     let padding_size = 16 - (sh_offset % 16);
     let shoff = sh_offset + padding_size;
 
     elf_header.set_shoff(shoff, shs.len() as u16);
-    elf_header.set_shstrndx(shstr_index as u16);
+    // .shstrtab is always the last section.
+    elf_header.set_shstrndx((shs.len() - 1) as u16);
 
     let mut output = File::create(output_file)?;
 
     output.write_all(elf_header.as_bytes())?;
-    if !machine_code.is_empty() {
-        output.write_all(&machine_code)?;
-        output.write_all(&symtab.as_bytes())?;
-        output.write_all(&strtab.as_bytes())?;
+    for (_, _, _, contents) in &sections {
+        output.write_all(contents)?;
     }
-    output.write_all(&shstrtab.as_bytes())?;
     output.write_all(&vec![0; padding_size as usize]).expect("Failed to write padding");
 
     for sh in &shs {
