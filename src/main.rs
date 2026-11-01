@@ -9,7 +9,7 @@ mod elf;
 use elf::header::Elf64Header;
 use elf::section::{Elf64SectionHeader, SectionType, SectionFlags};
 use elf::shstrtab::{ShStrTab};
-use elf::symtab::{Elf64Sym, SymTab, SymType, SymBind, SymVis};
+use elf::symtab::{SymTab, SymType, SymBind, SymVis};
 use elf::strtab::{StrTab};
 
 #[derive(Debug, PartialEq)]
@@ -134,18 +134,6 @@ fn main() -> std::io::Result<()> {
     let ast = parse(tokens);
     let machine_code = generate_machine_code(&ast);
 
-    #[cfg(FALSE)]
-    {
-        println!("Generated Machine Code:");
-        for (i, byte) in machine_code.iter().enumerate() {
-            print!("{:02X} ", byte);
-            if (i + 1) % 16 == 0 {
-                println!();
-            }
-        }
-        println!();
-    }
-
     let mut section_names = vec![
         ".shstrtab",
         ".text",
@@ -178,14 +166,8 @@ fn main() -> std::io::Result<()> {
     }
     let shstrtab = ShStrTab::new(&section_names);
 
-    #[cfg(FALSE)]
-    {
-        println!("{:?}", shstrtab.as_bytes().iter().map(|b| format!("0x{:02X}", b)).collect::<Vec<_>>());
-    }
-
     let mut elf_header = Elf64Header::new();
     let mut shs: Vec<Elf64SectionHeader> = Vec::new();
-    let mut shoff = 0;
     let mut shstr_index = 0;
 
     // NULL Section Header
@@ -257,7 +239,7 @@ fn main() -> std::io::Result<()> {
     shs.push(shstrtab_sh);
     sh_offset = sh_offset + shstrtab.as_bytes().len() as u64;
     let padding_size = 16 - (sh_offset % 16);
-    shoff = sh_offset + padding_size;
+    let shoff = sh_offset + padding_size;
 
     elf_header.set_shoff(shoff, shs.len() as u16);
     elf_header.set_shstrndx(shstr_index as u16);
