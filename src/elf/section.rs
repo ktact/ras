@@ -1,5 +1,3 @@
-use std::mem;
-
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum SectionType {
@@ -93,12 +91,7 @@ impl Elf64SectionHeader {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                mem::size_of::<Elf64SectionHeader>(),
-                )
-        }
+        super::struct_as_bytes(self)
     }
 }
 

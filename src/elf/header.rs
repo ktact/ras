@@ -56,11 +56,6 @@ impl Elf64Header {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                mem::size_of::<Elf64Header>()
-                )
-        }
+        super::struct_as_bytes(self)
     }
 }

@@ -1,5 +1,3 @@
-use std::mem;
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum SymType {
@@ -51,12 +49,7 @@ impl Elf64Sym {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                mem::size_of::<Elf64Sym>(),
-            )
-        }
+        super::struct_as_bytes(self)
     }
 }
 
