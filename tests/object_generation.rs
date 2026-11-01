@@ -21,7 +21,7 @@ fn compare_object_files(asm_file: &Path) {
     assert!(gcc_status.success(), "gcc failed to generate object file");
 
     // Generate object file by ras
-    let ras_status = Command::new("target/debug/ras")
+    let ras_status = Command::new(env!("CARGO_BIN_EXE_ras"))
         .arg("-c")
         .arg(asm_file)
         .arg("-o")
