@@ -1,47 +1,29 @@
 use std::fs;
-use std::process::Command;
-use std::io::Read;
-use tempfile::tempdir;
 use std::path::Path;
+use std::process::Command;
+use tempfile::tempdir;
+
+/// Assembles `asm_file` with `assembler` and returns the bytes of the resulting object file.
+fn assemble(assembler: &str, asm_file: &Path, object_file: &Path) -> Vec<u8> {
+    let status = Command::new(assembler)
+        .arg("-c")
+        .arg(asm_file)
+        .arg("-o")
+        .arg(object_file)
+        .status()
+        .unwrap_or_else(|err| panic!("Failed to run {}: {}", assembler, err));
+
+    assert!(status.success(), "{} failed to generate object file", assembler);
+
+    fs::read(object_file).unwrap_or_else(|err| panic!("Failed to read {}: {}", object_file.display(), err))
+}
 
 fn compare_object_files(asm_file: &Path) {
     let dir = tempdir().expect("Failed to create temp directory");
-    let gcc_object_file = dir.path().join("gcc.o");
-    let ras_object_file = dir.path().join("ras.o");
 
-    // Generate refeence object file by GCC
-    let gcc_status = Command::new("gcc")
-        .arg("-c")
-        .arg(asm_file)
-        .arg("-o")
-        .arg(&gcc_object_file)
-        .status()
-        .expect("Failed to run gcc");
-
-    assert!(gcc_status.success(), "gcc failed to generate object file");
-
-    // Generate object file by ras
-    let ras_status = Command::new(env!("CARGO_BIN_EXE_ras"))
-        .arg("-c")
-        .arg(asm_file)
-        .arg("-o")
-        .arg(&ras_object_file)
-        .status()
-        .expect("Failed to run ras");
-
-    assert!(ras_status.success(), "ras failed to generate object file");
-
-    let mut gcc_object_bytes = Vec::new();
-    let mut ras_object_bytes = Vec::new();
-
-    fs::File::open(&gcc_object_file)
-        .expect("Failed to open gcc output file")
-        .read_to_end(&mut gcc_object_bytes)
-        .expect("Failed to read gcc output file");
-    fs::File::open(&ras_object_file)
-        .expect("Failed to open ras output file")
-        .read_to_end(&mut ras_object_bytes)
-        .expect("Failed to read ras output file");
+    // gcc's output is the reference
+    let gcc_object_bytes = assemble("gcc", asm_file, &dir.path().join("gcc.o"));
+    let ras_object_bytes = assemble(env!("CARGO_BIN_EXE_ras"), asm_file, &dir.path().join("ras.o"));
 
     assert_eq!(gcc_object_bytes, ras_object_bytes, "Object files do not match!");
 }
