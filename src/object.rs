@@ -3,9 +3,9 @@ use crate::elf::section::{Elf64SectionHeader, SectionType, SectionFlags};
 use crate::elf::shstrtab::{ShStrTab};
 use crate::elf::symtab::{SymTab, SymType, SymBind, SymVis};
 use crate::elf::strtab::{StrTab};
-use crate::parser::Node;
+use crate::parser::{Node, Statement};
 
-pub fn build_object(ast: &[Node], machine_code: &[u8]) -> Vec<u8> {
+pub fn build_object(ast: &[Statement], machine_code: &[u8]) -> Vec<u8> {
     let mut section_names = vec![
         ".shstrtab",
         ".text",
@@ -19,8 +19,8 @@ pub fn build_object(ast: &[Node], machine_code: &[u8]) -> Vec<u8> {
         section_names.insert(0, ".strtab");
         section_names.insert(0, ".symtab");
 
-        for node in ast {
-            if let Node::Directive { pseudo_op, symbol } = node {
+        for statement in ast {
+            if let Node::Directive { pseudo_op, symbol } = &statement.node {
                 if pseudo_op == ".global" {
                     strtab.add_str(&symbol);
                     symtab.add_symbol(

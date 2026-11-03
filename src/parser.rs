@@ -4,6 +4,13 @@ use std::iter::Peekable;
 use crate::lexer::{Token, TokenKind};
 
 #[derive(Debug, PartialEq)]
+pub struct Statement {
+    pub node: Node,
+    /// 1-based line number in the source.
+    pub line: usize,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Directive { pseudo_op: String, symbol: String },
     Label(String),
@@ -14,6 +21,16 @@ pub enum Node {
 pub enum Mnemonic {
     Mov,
     Ret,
+}
+
+impl fmt::Display for Mnemonic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Mnemonic::Mov => "mov",
+            Mnemonic::Ret => "ret",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 impl Mnemonic {
@@ -113,7 +130,7 @@ impl fmt::Display for ParseErrorKind {
 
 impl std::error::Error for ParseError {}
 
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
+pub fn parse(tokens: Vec<Token>) -> Result<Vec<Statement>, ParseError> {
     Parser::new(tokens).parse_program()
 }
 
@@ -159,15 +176,17 @@ impl Parser {
         }
     }
 
-    fn parse_program(&mut self) -> Result<Vec<Node>, ParseError> {
-        let mut nodes = Vec::new();
+    fn parse_program(&mut self) -> Result<Vec<Statement>, ParseError> {
+        let mut statements = Vec::new();
         while let Some(token) = self.next() {
             if token == TokenKind::Newline {
                 continue;
             }
-            nodes.push(self.parse_statement(token)?);
+            let line = self.line;
+            let node = self.parse_statement(token)?;
+            statements.push(Statement { node, line });
         }
-        Ok(nodes)
+        Ok(statements)
     }
 
     fn parse_statement(&mut self, token: TokenKind) -> Result<Node, ParseError> {
@@ -231,7 +250,8 @@ mod tests {
     use crate::lexer::tokenize;
 
     fn parse_source(source: &str) -> Result<Vec<Node>, ParseError> {
-        parse(tokenize(source).expect("Failed to tokenize"))
+        let statements = parse(tokenize(source).expect("Failed to tokenize"))?;
+        Ok(statements.into_iter().map(|statement| statement.node).collect())
     }
 
     #[test]
@@ -355,5 +375,13 @@ mod tests {
                 kind: ParseErrorKind::IntegerOutOfRange { digits: "99999999999999999999".into() },
             }),
         );
+    }
+
+    #[test]
+    fn records_line_of_statement() {
+        let statements = parse(tokenize(".global main\n\nmain: ret").expect("Failed to tokenize"))
+            .expect("Failed to parse");
+        let lines: Vec<usize> = statements.iter().map(|statement| statement.line).collect();
+        assert_eq!(lines, vec![1, 3, 3]);
     }
 }

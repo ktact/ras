@@ -53,7 +53,10 @@ fn main() -> std::io::Result<()> {
         eprintln!("Error: {}: {}", input_file.display(), err);
         process::exit(1);
     });
-    let machine_code = generate_machine_code(&ast);
+    let machine_code = generate_machine_code(&ast).unwrap_or_else(|err| {
+        eprintln!("Error: {}: {}", input_file.display(), err);
+        process::exit(1);
+    });
     let object = build_object(&ast, &machine_code);
 
     fs::write(output_file, object)
