@@ -7,7 +7,24 @@ use crate::lexer::{Token, TokenKind};
 pub enum Node {
     Directive { pseudo_op: String, symbol: String },
     Label(String),
-    Instruction { opcode: String, operands: Vec<Operand> },
+    Instruction { mnemonic: Mnemonic, operands: Vec<Operand> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Mnemonic {
+    Mov,
+    Ret,
+}
+
+impl Mnemonic {
+    fn from_name(name: &str) -> Option<Self> {
+        let mnemonic = match name {
+            "mov" => Mnemonic::Mov,
+            "ret" => Mnemonic::Ret,
+            _ => return None,
+        };
+        Some(mnemonic)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,6 +77,7 @@ pub struct ParseError {
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorKind {
     MissingSymbol { directive: String },
+    UnknownMnemonic { name: String },
     IntegerOutOfRange { digits: String },
     /// `found` is `None` at the end of input.
     UnexpectedToken { expected: &'static str, found: Option<TokenKind> },
@@ -76,6 +94,9 @@ impl fmt::Display for ParseErrorKind {
         match self {
             ParseErrorKind::MissingSymbol { directive } => {
                 write!(f, "expected symbol name after '{}'", directive)
+            }
+            ParseErrorKind::UnknownMnemonic { name } => {
+                write!(f, "no such instruction: '{}'", name)
             }
             ParseErrorKind::IntegerOutOfRange { digits } => {
                 write!(f, "integer '{}' is out of range", digits)
@@ -173,7 +194,11 @@ impl Parser {
         Ok(Node::Directive { pseudo_op, symbol })
     }
 
-    fn parse_instruction(&mut self, opcode: String) -> Result<Node, ParseError> {
+    fn parse_instruction(&mut self, name: String) -> Result<Node, ParseError> {
+        let Some(mnemonic) = Mnemonic::from_name(&name) else {
+            return Err(self.error(ParseErrorKind::UnknownMnemonic { name }));
+        };
+
         let mut operands = Vec::new();
         if !self.at_end_of_statement() {
             operands.push(self.parse_operand()?);
@@ -182,7 +207,7 @@ impl Parser {
             }
         }
         self.expect_end_of_statement()?;
-        Ok(Node::Instruction { opcode, operands })
+        Ok(Node::Instruction { mnemonic, operands })
     }
 
     fn parse_operand(&mut self) -> Result<Operand, ParseError> {
@@ -232,7 +257,7 @@ mod tests {
         assert_eq!(
             parse_source("mov rax, 42"),
             Ok(vec![Node::Instruction {
-                opcode: "mov".into(),
+                mnemonic: Mnemonic::Mov,
                 operands: vec![Operand::Register(Register::Rax), Operand::Immediate(42)],
             }]),
         );
@@ -245,7 +270,7 @@ mod tests {
             Ok(vec![
                 Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() },
                 Node::Label("main".into()),
-                Node::Instruction { opcode: "ret".into(), operands: vec![] },
+                Node::Instruction { mnemonic: Mnemonic::Ret, operands: vec![] },
             ]),
         );
     }
@@ -256,7 +281,7 @@ mod tests {
             parse_source("main: ret"),
             Ok(vec![
                 Node::Label("main".into()),
-                Node::Instruction { opcode: "ret".into(), operands: vec![] },
+                Node::Instruction { mnemonic: Mnemonic::Ret, operands: vec![] },
             ]),
         );
     }
@@ -305,8 +330,19 @@ mod tests {
     #[test]
     fn parses_symbol_operand() {
         assert_eq!(
-            parse_source("call foo"),
-            Ok(vec![Node::Instruction { opcode: "call".into(), operands: vec![Operand::Symbol("foo".into())] }]),
+            parse_source("mov rax, foo"),
+            Ok(vec![Node::Instruction {
+                mnemonic: Mnemonic::Mov,
+                operands: vec![Operand::Register(Register::Rax), Operand::Symbol("foo".into())],
+            }]),
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_mnemonic() {
+        assert_eq!(
+            parse_source("mvo rax, 1"),
+            Err(ParseError { line: 1, kind: ParseErrorKind::UnknownMnemonic { name: "mvo".into() } }),
         );
     }
 
