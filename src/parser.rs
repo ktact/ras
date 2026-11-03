@@ -1,6 +1,6 @@
 use crate::lexer::Token;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Directive { pseudo_op: String, symbol: String },
     Label(String),
@@ -23,4 +23,59 @@ pub fn parse(tokens: Vec<Token>) -> Vec<Node> {
     }
 
     tree
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_empty_input() {
+        assert_eq!(parse(vec![]), vec![]);
+    }
+
+    #[test]
+    fn parses_directive() {
+        let tokens = vec![Token::Directive(".global".into(), "main".into())];
+        assert_eq!(
+            parse(tokens),
+            vec![Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() }],
+        );
+    }
+
+    #[test]
+    fn parses_label() {
+        let tokens = vec![Token::Label("main".into())];
+        assert_eq!(parse(tokens), vec![Node::Label("main".into())]);
+    }
+
+    #[test]
+    fn parses_instruction() {
+        let tokens = vec![Token::Instruction("mov".into(), strings(&["rax", "42"]))];
+        assert_eq!(
+            parse(tokens),
+            vec![Node::Instruction { opcode: "mov".into(), operands: strings(&["rax", "42"]) }],
+        );
+    }
+
+    #[test]
+    fn preserves_statement_order() {
+        let tokens = vec![
+            Token::Directive(".global".into(), "main".into()),
+            Token::Label("main".into()),
+            Token::Instruction("ret".into(), vec![]),
+        ];
+        assert_eq!(
+            parse(tokens),
+            vec![
+                Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() },
+                Node::Label("main".into()),
+                Node::Instruction { opcode: "ret".into(), operands: vec![] },
+            ],
+        );
+    }
 }
