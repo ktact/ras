@@ -7,7 +7,47 @@ use crate::lexer::{Token, TokenKind};
 pub enum Node {
     Directive { pseudo_op: String, symbol: String },
     Label(String),
-    Instruction { opcode: String, operands: Vec<String> },
+    Instruction { opcode: String, operands: Vec<Operand> },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Operand {
+    Register(Register),
+    Immediate(i64),
+    /// A reference to a label or other symbol.
+    Symbol(String),
+}
+
+/// 64-bit general purpose registers, in the order of their encoding numbers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Register {
+    Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi,
+    R8, R9, R10, R11, R12, R13, R14, R15,
+}
+
+impl Register {
+    fn from_name(name: &str) -> Option<Self> {
+        let register = match name {
+            "rax" => Register::Rax,
+            "rcx" => Register::Rcx,
+            "rdx" => Register::Rdx,
+            "rbx" => Register::Rbx,
+            "rsp" => Register::Rsp,
+            "rbp" => Register::Rbp,
+            "rsi" => Register::Rsi,
+            "rdi" => Register::Rdi,
+            "r8"  => Register::R8,
+            "r9"  => Register::R9,
+            "r10" => Register::R10,
+            "r11" => Register::R11,
+            "r12" => Register::R12,
+            "r13" => Register::R13,
+            "r14" => Register::R14,
+            "r15" => Register::R15,
+            _ => return None,
+        };
+        Some(register)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -20,6 +60,7 @@ pub struct ParseError {
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorKind {
     MissingSymbol { directive: String },
+    IntegerOutOfRange { digits: String },
     /// `found` is `None` at the end of input.
     UnexpectedToken { expected: &'static str, found: Option<TokenKind> },
 }
@@ -35,6 +76,9 @@ impl fmt::Display for ParseErrorKind {
         match self {
             ParseErrorKind::MissingSymbol { directive } => {
                 write!(f, "expected symbol name after '{}'", directive)
+            }
+            ParseErrorKind::IntegerOutOfRange { digits } => {
+                write!(f, "integer '{}' is out of range", digits)
             }
             ParseErrorKind::UnexpectedToken { expected, found: Some(found) } => {
                 write!(f, "expected {}, found {}", expected, found)
@@ -141,9 +185,16 @@ impl Parser {
         Ok(Node::Instruction { opcode, operands })
     }
 
-    fn parse_operand(&mut self) -> Result<String, ParseError> {
+    fn parse_operand(&mut self) -> Result<Operand, ParseError> {
         match self.next() {
-            Some(TokenKind::Ident(operand)) | Some(TokenKind::Integer(operand)) => Ok(operand),
+            Some(TokenKind::Ident(name)) => match Register::from_name(&name) {
+                Some(register) => Ok(Operand::Register(register)),
+                None => Ok(Operand::Symbol(name)),
+            },
+            Some(TokenKind::Integer(digits)) => match digits.parse() {
+                Ok(value) => Ok(Operand::Immediate(value)),
+                Err(_) => Err(self.error(ParseErrorKind::IntegerOutOfRange { digits })),
+            },
             found => Err(self.error(ParseErrorKind::UnexpectedToken { expected: "operand", found })),
         }
     }
@@ -156,10 +207,6 @@ mod tests {
 
     fn parse_source(source: &str) -> Result<Vec<Node>, ParseError> {
         parse(tokenize(source).expect("Failed to tokenize"))
-    }
-
-    fn strings(items: &[&str]) -> Vec<String> {
-        items.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
@@ -184,7 +231,10 @@ mod tests {
     fn parses_instruction() {
         assert_eq!(
             parse_source("mov rax, 42"),
-            Ok(vec![Node::Instruction { opcode: "mov".into(), operands: strings(&["rax", "42"]) }]),
+            Ok(vec![Node::Instruction {
+                opcode: "mov".into(),
+                operands: vec![Operand::Register(Register::Rax), Operand::Immediate(42)],
+            }]),
         );
     }
 
@@ -248,6 +298,25 @@ mod tests {
             Err(ParseError {
                 line: 3,
                 kind: ParseErrorKind::UnexpectedToken { expected: "end of line", found: Some(TokenKind::Integer("42".into())) },
+            }),
+        );
+    }
+
+    #[test]
+    fn parses_symbol_operand() {
+        assert_eq!(
+            parse_source("call foo"),
+            Ok(vec![Node::Instruction { opcode: "call".into(), operands: vec![Operand::Symbol("foo".into())] }]),
+        );
+    }
+
+    #[test]
+    fn rejects_integer_out_of_range() {
+        assert_eq!(
+            parse_source("mov rax, 99999999999999999999"),
+            Err(ParseError {
+                line: 1,
+                kind: ParseErrorKind::IntegerOutOfRange { digits: "99999999999999999999".into() },
             }),
         );
     }
