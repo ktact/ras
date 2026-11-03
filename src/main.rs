@@ -45,7 +45,10 @@ fn main() -> std::io::Result<()> {
         process::exit(1);
     });
 
-    let tokens = tokenize(&source);
+    let tokens = tokenize(&source).unwrap_or_else(|err| {
+        eprintln!("Error: {}: {}", input_file.display(), err);
+        process::exit(1);
+    });
     let ast = parse(tokens).unwrap_or_else(|err| {
         eprintln!("Error: {}: {}", input_file.display(), err);
         process::exit(1);

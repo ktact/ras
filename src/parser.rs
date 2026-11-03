@@ -1,4 +1,5 @@
 use std::fmt;
+use std::iter::Peekable;
 
 use crate::lexer::Token;
 
@@ -12,6 +13,8 @@ pub enum Node {
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
     MissingSymbol { directive: String },
+    /// `found` is `None` at the end of input.
+    UnexpectedToken { expected: &'static str, found: Option<Token> },
 }
 
 impl fmt::Display for ParseError {
@@ -19,6 +22,12 @@ impl fmt::Display for ParseError {
         match self {
             ParseError::MissingSymbol { directive } => {
                 write!(f, "expected symbol name after '{}'", directive)
+            }
+            ParseError::UnexpectedToken { expected, found: Some(found) } => {
+                write!(f, "expected {}, found {}", expected, found)
+            }
+            ParseError::UnexpectedToken { expected, found: None } => {
+                write!(f, "expected {}, found end of input", expected)
             }
         }
     }
@@ -31,17 +40,39 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
 }
 
 struct Parser {
-    tokens: std::vec::IntoIter<Token>,
+    tokens: Peekable<std::vec::IntoIter<Token>>,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens: tokens.into_iter() }
+        Self { tokens: tokens.into_iter().peekable() }
+    }
+
+    fn peek(&mut self) -> Option<&Token> {
+        self.tokens.peek()
+    }
+
+    fn next(&mut self) -> Option<Token> {
+        self.tokens.next()
+    }
+
+    fn at_end_of_statement(&mut self) -> bool {
+        matches!(self.peek(), None | Some(Token::Newline))
+    }
+
+    fn expect_end_of_statement(&mut self) -> Result<(), ParseError> {
+        match self.next() {
+            None | Some(Token::Newline) => Ok(()),
+            found => Err(ParseError::UnexpectedToken { expected: "end of line", found }),
+        }
     }
 
     fn parse_program(&mut self) -> Result<Vec<Node>, ParseError> {
         let mut nodes = Vec::new();
-        while let Some(token) = self.tokens.next() {
+        while let Some(token) = self.next() {
+            if token == Token::Newline {
+                continue;
+            }
             nodes.push(self.parse_statement(token)?);
         }
         Ok(nodes)
@@ -49,27 +80,56 @@ impl Parser {
 
     fn parse_statement(&mut self, token: Token) -> Result<Node, ParseError> {
         match token {
-            Token::Directive(pseudo_op, symbol) => self.parse_directive(pseudo_op, symbol),
-            Token::Label(label) => Ok(Node::Label(label)),
-            Token::Instruction(opcode, operands) => Ok(self.parse_instruction(opcode, operands)),
+            Token::Ident(name) if self.peek() == Some(&Token::Colon) => {
+                self.next();
+                Ok(Node::Label(name))
+            }
+            Token::Ident(name) if name.starts_with('.') => self.parse_directive(name),
+            Token::Ident(name) => self.parse_instruction(name),
+            found => Err(ParseError::UnexpectedToken { expected: "statement", found: Some(found) }),
         }
     }
 
-    fn parse_directive(&mut self, pseudo_op: String, symbol: String) -> Result<Node, ParseError> {
+    fn parse_directive(&mut self, pseudo_op: String) -> Result<Node, ParseError> {
+        let symbol = match self.tokens.next_if(|token| matches!(token, Token::Ident(_))) {
+            Some(Token::Ident(symbol)) => symbol,
+            _ => String::new(),
+        };
         if pseudo_op == ".global" && symbol.is_empty() {
             return Err(ParseError::MissingSymbol { directive: pseudo_op });
         }
+        self.expect_end_of_statement()?;
         Ok(Node::Directive { pseudo_op, symbol })
     }
 
-    fn parse_instruction(&mut self, opcode: String, operands: Vec<String>) -> Node {
-        Node::Instruction { opcode, operands }
+    fn parse_instruction(&mut self, opcode: String) -> Result<Node, ParseError> {
+        let mut operands = Vec::new();
+        if !self.at_end_of_statement() {
+            operands.push(self.parse_operand()?);
+            while self.tokens.next_if_eq(&Token::Comma).is_some() {
+                operands.push(self.parse_operand()?);
+            }
+        }
+        self.expect_end_of_statement()?;
+        Ok(Node::Instruction { opcode, operands })
+    }
+
+    fn parse_operand(&mut self) -> Result<String, ParseError> {
+        match self.next() {
+            Some(Token::Ident(operand)) | Some(Token::Integer(operand)) => Ok(operand),
+            found => Err(ParseError::UnexpectedToken { expected: "operand", found }),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::tokenize;
+
+    fn parse_source(source: &str) -> Result<Vec<Node>, ParseError> {
+        parse(tokenize(source).expect("Failed to tokenize"))
+    }
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
@@ -77,42 +137,34 @@ mod tests {
 
     #[test]
     fn parses_empty_input() {
-        assert_eq!(parse(vec![]), Ok(vec![]));
+        assert_eq!(parse_source(""), Ok(vec![]));
     }
 
     #[test]
     fn parses_directive() {
-        let tokens = vec![Token::Directive(".global".into(), "main".into())];
         assert_eq!(
-            parse(tokens),
+            parse_source(".global main"),
             Ok(vec![Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() }]),
         );
     }
 
     #[test]
     fn parses_label() {
-        let tokens = vec![Token::Label("main".into())];
-        assert_eq!(parse(tokens), Ok(vec![Node::Label("main".into())]));
+        assert_eq!(parse_source("main:"), Ok(vec![Node::Label("main".into())]));
     }
 
     #[test]
     fn parses_instruction() {
-        let tokens = vec![Token::Instruction("mov".into(), strings(&["rax", "42"]))];
         assert_eq!(
-            parse(tokens),
+            parse_source("mov rax, 42"),
             Ok(vec![Node::Instruction { opcode: "mov".into(), operands: strings(&["rax", "42"]) }]),
         );
     }
 
     #[test]
     fn preserves_statement_order() {
-        let tokens = vec![
-            Token::Directive(".global".into(), "main".into()),
-            Token::Label("main".into()),
-            Token::Instruction("ret".into(), vec![]),
-        ];
         assert_eq!(
-            parse(tokens),
+            parse_source(".global main\n\nmain:\n    ret\n"),
             Ok(vec![
                 Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() },
                 Node::Label("main".into()),
@@ -122,11 +174,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_global_without_symbol() {
-        let tokens = vec![Token::Directive(".global".into(), "".into())];
+    fn parses_label_and_instruction_on_same_line() {
         assert_eq!(
-            parse(tokens),
+            parse_source("main: ret"),
+            Ok(vec![
+                Node::Label("main".into()),
+                Node::Instruction { opcode: "ret".into(), operands: vec![] },
+            ]),
+        );
+    }
+
+    #[test]
+    fn rejects_global_without_symbol() {
+        assert_eq!(
+            parse_source(".global"),
             Err(ParseError::MissingSymbol { directive: ".global".into() }),
+        );
+    }
+
+    #[test]
+    fn rejects_missing_operand_after_comma() {
+        assert_eq!(
+            parse_source("mov rax,"),
+            Err(ParseError::UnexpectedToken { expected: "operand", found: Some(Token::Newline) }),
+        );
+    }
+
+    #[test]
+    fn rejects_operands_without_comma() {
+        assert_eq!(
+            parse_source("mov rax 42"),
+            Err(ParseError::UnexpectedToken { expected: "end of line", found: Some(Token::Integer("42".into())) }),
         );
     }
 }
