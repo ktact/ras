@@ -27,24 +27,44 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
-    let mut tree = Vec::new();
+    Parser::new(tokens).parse_program()
+}
 
-    for token in tokens {
+struct Parser {
+    tokens: std::vec::IntoIter<Token>,
+}
+
+impl Parser {
+    fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens: tokens.into_iter() }
+    }
+
+    fn parse_program(&mut self) -> Result<Vec<Node>, ParseError> {
+        let mut nodes = Vec::new();
+        while let Some(token) = self.tokens.next() {
+            nodes.push(self.parse_statement(token)?);
+        }
+        Ok(nodes)
+    }
+
+    fn parse_statement(&mut self, token: Token) -> Result<Node, ParseError> {
         match token {
-            Token::Directive(pseudo_op, symbol) => {
-                if pseudo_op == ".global" && symbol.is_empty() {
-                    return Err(ParseError::MissingSymbol { directive: pseudo_op });
-                }
-                tree.push(Node::Directive { pseudo_op, symbol });
-            }
-            Token::Label(label) => tree.push(Node::Label(label)),
-            Token::Instruction(opcode, operands) =>  {
-                tree.push(Node::Instruction { opcode, operands });
-            }
+            Token::Directive(pseudo_op, symbol) => self.parse_directive(pseudo_op, symbol),
+            Token::Label(label) => Ok(Node::Label(label)),
+            Token::Instruction(opcode, operands) => Ok(self.parse_instruction(opcode, operands)),
         }
     }
 
-    Ok(tree)
+    fn parse_directive(&mut self, pseudo_op: String, symbol: String) -> Result<Node, ParseError> {
+        if pseudo_op == ".global" && symbol.is_empty() {
+            return Err(ParseError::MissingSymbol { directive: pseudo_op });
+        }
+        Ok(Node::Directive { pseudo_op, symbol })
+    }
+
+    fn parse_instruction(&mut self, opcode: String, operands: Vec<String>) -> Node {
+        Node::Instruction { opcode, operands }
+    }
 }
 
 #[cfg(test)]
