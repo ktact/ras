@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::lexer::Token;
 
 #[derive(Debug, PartialEq)]
@@ -7,12 +9,32 @@ pub enum Node {
     Instruction { opcode: String, operands: Vec<String> },
 }
 
-pub fn parse(tokens: Vec<Token>) -> Vec<Node> {
+#[derive(Debug, PartialEq)]
+pub enum ParseError {
+    MissingSymbol { directive: String },
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::MissingSymbol { directive } => {
+                write!(f, "expected symbol name after '{}'", directive)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
     let mut tree = Vec::new();
 
     for token in tokens {
         match token {
             Token::Directive(pseudo_op, symbol) => {
+                if pseudo_op == ".global" && symbol.is_empty() {
+                    return Err(ParseError::MissingSymbol { directive: pseudo_op });
+                }
                 tree.push(Node::Directive { pseudo_op, symbol });
             }
             Token::Label(label) => tree.push(Node::Label(label)),
@@ -22,7 +44,7 @@ pub fn parse(tokens: Vec<Token>) -> Vec<Node> {
         }
     }
 
-    tree
+    Ok(tree)
 }
 
 #[cfg(test)]
@@ -35,7 +57,7 @@ mod tests {
 
     #[test]
     fn parses_empty_input() {
-        assert_eq!(parse(vec![]), vec![]);
+        assert_eq!(parse(vec![]), Ok(vec![]));
     }
 
     #[test]
@@ -43,14 +65,14 @@ mod tests {
         let tokens = vec![Token::Directive(".global".into(), "main".into())];
         assert_eq!(
             parse(tokens),
-            vec![Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() }],
+            Ok(vec![Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() }]),
         );
     }
 
     #[test]
     fn parses_label() {
         let tokens = vec![Token::Label("main".into())];
-        assert_eq!(parse(tokens), vec![Node::Label("main".into())]);
+        assert_eq!(parse(tokens), Ok(vec![Node::Label("main".into())]));
     }
 
     #[test]
@@ -58,7 +80,7 @@ mod tests {
         let tokens = vec![Token::Instruction("mov".into(), strings(&["rax", "42"]))];
         assert_eq!(
             parse(tokens),
-            vec![Node::Instruction { opcode: "mov".into(), operands: strings(&["rax", "42"]) }],
+            Ok(vec![Node::Instruction { opcode: "mov".into(), operands: strings(&["rax", "42"]) }]),
         );
     }
 
@@ -71,11 +93,20 @@ mod tests {
         ];
         assert_eq!(
             parse(tokens),
-            vec![
+            Ok(vec![
                 Node::Directive { pseudo_op: ".global".into(), symbol: "main".into() },
                 Node::Label("main".into()),
                 Node::Instruction { opcode: "ret".into(), operands: vec![] },
-            ],
+            ]),
+        );
+    }
+
+    #[test]
+    fn rejects_global_without_symbol() {
+        let tokens = vec![Token::Directive(".global".into(), "".into())];
+        assert_eq!(
+            parse(tokens),
+            Err(ParseError::MissingSymbol { directive: ".global".into() }),
         );
     }
 }
