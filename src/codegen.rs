@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::parser::{Mnemonic, Node, Operand, Register, Statement};
@@ -48,18 +49,32 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
     }
 }
 
-pub fn generate_machine_code(ast: &[Statement]) -> Result<Vec<u8>, CodegenError> {
-    let mut code = Vec::new();
+#[derive(Debug, PartialEq)]
+pub struct MachineCode {
+    pub text: Vec<u8>,
+    /// Offset of each label from the start of .text.
+    pub labels: HashMap<String, u64>,
+}
+
+pub fn generate_machine_code(ast: &[Statement]) -> Result<MachineCode, CodegenError> {
+    let mut text = Vec::new();
+    let mut labels = HashMap::new();
 
     for statement in ast {
-        if let Node::Instruction { mnemonic, operands } = &statement.node {
-            let bytes = encode_instruction(*mnemonic, operands)
-                .map_err(|kind| CodegenError { line: statement.line, kind })?;
-            code.extend(bytes);
+        match &statement.node {
+            Node::Label(name) => {
+                labels.insert(name.clone(), text.len() as u64);
+            }
+            Node::Instruction { mnemonic, operands } => {
+                let bytes = encode_instruction(*mnemonic, operands)
+                    .map_err(|kind| CodegenError { line: statement.line, kind })?;
+                text.extend(bytes);
+            }
+            Node::Directive { .. } => {}
         }
     }
 
-    Ok(code)
+    Ok(MachineCode { text, labels })
 }
 
 #[cfg(test)]
@@ -68,7 +83,7 @@ mod tests {
     use crate::lexer::tokenize;
     use crate::parser::parse;
 
-    fn assemble(source: &str) -> Result<Vec<u8>, CodegenError> {
+    fn assemble(source: &str) -> Result<MachineCode, CodegenError> {
         let ast = parse(tokenize(source).expect("Failed to tokenize")).expect("Failed to parse");
         generate_machine_code(&ast)
     }
@@ -76,7 +91,7 @@ mod tests {
     #[test]
     fn encodes_mov_and_ret() {
         assert_eq!(
-            assemble("mov rax, 42\nret"),
+            assemble("mov rax, 42\nret").map(|machine_code| machine_code.text),
             Ok(vec![0x48, 0xc7, 0xc0, 42, 0x00, 0x00, 0x00, 0xc3]),
         );
     }
@@ -95,5 +110,13 @@ mod tests {
             assemble("mov rax, 256"),
             Err(CodegenError { line: 1, kind: CodegenErrorKind::ImmediateOutOfRange { value: 256 } }),
         );
+    }
+
+    #[test]
+    fn records_label_offsets() {
+        let labels = assemble("a:\n    ret\nb:\n    mov rax, 1\nc:").expect("Failed to assemble").labels;
+        assert_eq!(labels["a"], 0);
+        assert_eq!(labels["b"], 1);
+        assert_eq!(labels["c"], 8);
     }
 }
