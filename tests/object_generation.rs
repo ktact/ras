@@ -68,3 +68,8 @@ fn test_no_symbols() {
 fn test_undefined_global() {
     compare_object_files("undefined_global.s");
 }
+
+#[test]
+fn test_mov_imm_registeres() {
+    compare_object_files("mov_imm_registers.s");
+}

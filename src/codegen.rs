@@ -1,3 +1,10 @@
+//! Encodes instructions into x86-64 machine code.
+//!
+//! Section, table and figure numbers in comments refer to the Intel® 64 and IA-32
+//! Architectures Software Developer's Manual, Volume 2: Instruction Set Reference
+//! (order number 325383-093US, September 2026), available from
+//! <https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html>
+
 use std::collections::HashMap;
 use std::fmt;
 
@@ -37,12 +44,50 @@ impl fmt::Display for CodegenErrorKind {
 
 impl std::error::Error for CodegenError {}
 
+/// Returns a REX prefix with W=1 (64-bit operand size) for an instruction whose
+/// ModRM r/m field names `rm`.
+///
+/// The REX prefix is laid out as `0100 WRXB`:
+///
+/// - W: 1 selects a 64-bit operand size, hence the base value 0x48.
+/// - B: the 4th bit of the register number in ModRM.rm, which only has 3 bits.
+///
+/// | register | number | binary | REX.B | ModRM.rm |
+/// |----------|--------|--------|-------|----------|
+/// | rdi      | 7      | 0111   | 0     | 111      |
+/// | r8       | 8      | 1000   | 1     | 000      |
+/// | r15      | 15     | 1111   | 1     | 111      |
+///
+/// So `rdi` and `r15` share the same ModRM.rm and are told apart only by REX.B
+/// (0x48 vs 0x49).
+///
+/// See 2.2.1 "REX Prefixes", Table 2-4 and Figure 2-5.
+fn rex_w(rm: Register) -> u8 {
+    0x48 | (rm as u8 >> 3)
+}
+
+/// Returns a ModRM byte whose r/m field names the register `rm`.
+///
+/// The ModRM byte is laid out as `mod(2) reg(3) rm(3)`:
+///
+/// - mod: 11 (0xc0) makes r/m name a register rather than a memory operand.
+/// - reg: either another register number or an opcode extension.
+///        For example, `C7 /0` in the manual means reg must be 0.
+/// - rm: the low 3 bits of the register number. The 4th bit goes to REX.B (see [`rex_w`]).
+///
+/// See 2.1.3 "ModR/M and SIB Bytes" and Table 2-2. The "/digit" notation is
+/// described in 3.1.1.1.
+fn modrm_register(reg: u8, rm: Register) -> u8 {
+    0xc0 | (reg << 3) | (rm as u8 & 0b111)
+}
+
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
-        (Mnemonic::Mov, [Operand::Register(Register::Rax), Operand::Immediate(imm)]) => {
+        (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
             let imm8 = u8::try_from(*imm)
                 .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
-            Ok(vec![0x48, 0xc7, 0xc0, imm8, 0x00, 0x00, 0x00])
+            // REX.W + C7 /0 id: MOV r/m64, imm32 (see "MOV—Move")
+            Ok(vec![rex_w(*dst), 0xc7, modrm_register(0, *dst), imm8, 0x00, 0x00, 0x00])
         }
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),
         _ => Err(CodegenErrorKind::UnsupportedOperands { mnemonic }),
