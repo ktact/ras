@@ -73,3 +73,8 @@ fn test_undefined_global() {
 fn test_mov_imm_registeres() {
     compare_object_files("mov_imm_registers.s");
 }
+
+#[test]
+fn test_mov_imm32() {
+    compare_object_files("mov_imm32.s");
+}

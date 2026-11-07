@@ -84,10 +84,13 @@ fn modrm_register(reg: u8, rm: Register) -> u8 {
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
-            let imm8 = u8::try_from(*imm)
+            // The 32-bit immediate is sign-extended to 64 bits.
+            let imm32 = i32::try_from(*imm)
                 .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
             // REX.W + C7 /0 id: MOV r/m64, imm32 (see "MOV—Move")
-            Ok(vec![rex_w(*dst), 0xc7, modrm_register(0, *dst), imm8, 0x00, 0x00, 0x00])
+            let mut bytes = vec![rex_w(*dst), 0xc7, modrm_register(0, *dst)];
+            bytes.extend(imm32.to_le_bytes());
+            Ok(bytes)
         }
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),
         _ => Err(CodegenErrorKind::UnsupportedOperands { mnemonic }),
@@ -152,8 +155,8 @@ mod tests {
     #[test]
     fn rejects_immediate_out_of_range() {
         assert_eq!(
-            assemble("mov rax, 256"),
-            Err(CodegenError { line: 1, kind: CodegenErrorKind::ImmediateOutOfRange { value: 256 } }),
+            assemble("mov rax, 2147483648"),
+            Err(CodegenError { line: 1, kind: CodegenErrorKind::ImmediateOutOfRange { value: 2147483648 } }),
         );
     }
 
