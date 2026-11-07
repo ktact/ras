@@ -63,3 +63,8 @@ fn test_labels() {
 fn test_no_symbols() {
     compare_object_files("no_symbols.s");
 }
+
+#[test]
+fn test_undefined_global() {
+    compare_object_files("undefined_global.s");
+}

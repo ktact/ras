@@ -52,8 +52,13 @@ pub fn build_object(ast: &[Statement], machine_code: &MachineCode) -> Vec<u8> {
         for symbol in &symbols {
             let name_offset = strtab.add_str(&symbol.name);
             let bind = if symbol.global { SymBind::Global } else { SymBind::Local };
-            let value = machine_code.labels.get(&symbol.name).copied().unwrap_or(0);
-            symtab.add_symbol(name_offset, SymType::NoType, bind, SymVis::Default, 1, value, 0);
+
+            // A symbol that is never defined as a label is undefined (section index 0).
+            let (shndx, value) = match machine_code.labels.get(&symbol.name) {
+                Some(&offset) => (1, offset),
+                None => (0, 0),
+            };
+            symtab.add_symbol(name_offset, SymType::NoType, bind, SymVis::Default, shndx, value, 0);
         }
     }
     let shstrtab = ShStrTab::new(&section_names);
