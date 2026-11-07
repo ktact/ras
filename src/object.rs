@@ -45,7 +45,7 @@ pub fn build_object(ast: &[Statement], machine_code: &MachineCode) -> Vec<u8> {
     let mut symtab = SymTab::new();
 
     let symbols = collect_symbols(ast);
-    if !machine_code.text.is_empty() {
+    if !symbols.is_empty() {
         section_names.insert(0, ".strtab");
         section_names.insert(0, ".symtab");
 

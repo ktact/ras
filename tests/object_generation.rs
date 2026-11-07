@@ -58,3 +58,8 @@ fn test_symtab_alignment() {
 fn test_labels() {
     compare_object_files("labels.s");
 }
+
+#[test]
+fn test_no_symbols() {
+    compare_object_files("no_symbols.s");
+}
