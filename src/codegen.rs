@@ -99,6 +99,12 @@ fn encode_opcode_plus_register(opcode: u8, reg: Register) -> Vec<u8> {
 
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
+        (Mnemonic::Add, [Operand::Register(dst), Operand::Immediate(imm)]) => {
+            let imm8 = i8::try_from(*imm)
+                .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
+            // REX.W + 83 /0 ib: ADD r/m64, imm8 (see "ADD—Add")
+            Ok(vec![rex_w(*dst), 0x83, modrm_register(0, *dst), imm8 as u8])
+        }
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
             // The 32-bit immediate is sign-extended to 64 bits.
             let imm32 = i32::try_from(*imm)

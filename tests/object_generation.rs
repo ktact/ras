@@ -98,3 +98,8 @@ fn test_push_imm32() {
 fn test_push_imm8() {
     compare_object_files("push_imm8.s");
 }
+
+#[test]
+fn test_add_imm8() {
+    compare_object_files("add_imm8.s");
+}
