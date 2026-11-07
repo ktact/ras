@@ -3,9 +3,38 @@ use crate::elf::section::{Elf64SectionHeader, SectionType, SectionFlags};
 use crate::elf::shstrtab::{ShStrTab};
 use crate::elf::symtab::{SymTab, SymType, SymBind, SymVis};
 use crate::elf::strtab::{StrTab};
+use crate::codegen::MachineCode;
 use crate::parser::{Node, Statement};
 
-pub fn build_object(ast: &[Statement], machine_code: &[u8]) -> Vec<u8> {
+struct Symbol {
+    name: String,
+    global: bool,
+}
+
+/// Lists the symbols in the order GNU as writes them to .symtab:
+///   in order of first appearance with all locals before globals.
+fn collect_symbols(ast: &[Statement]) -> Vec<Symbol> {
+    let mut symbols: Vec<Symbol> = Vec::new();
+
+    for statement in ast {
+        let (name, global) = match &statement.node {
+            Node::Directive { pseudo_op, symbol } if pseudo_op == ".global" => (symbol, true),
+            // Labels starting with .L are local to the assembler and never become symbols.
+            Node::Label(name) if !name.starts_with(".L") => (name, false),
+            _ => continue,
+        };
+
+        match symbols.iter_mut().find(|symbol| symbol.name == *name) {
+            Some(symbol) => symbol.global |= global,
+            None => symbols.push(Symbol { name: name.clone(), global }),
+        }
+    }
+
+    symbols.sort_by_key(|symbol| symbol.global);
+    symbols
+}
+
+pub fn build_object(ast: &[Statement], machine_code: &MachineCode) -> Vec<u8> {
     let mut section_names = vec![
         ".shstrtab",
         ".text",
@@ -15,25 +44,16 @@ pub fn build_object(ast: &[Statement], machine_code: &[u8]) -> Vec<u8> {
     let mut strtab = StrTab::new();
     let mut symtab = SymTab::new();
 
-    if !machine_code.is_empty() {
+    let symbols = collect_symbols(ast);
+    if !machine_code.text.is_empty() {
         section_names.insert(0, ".strtab");
         section_names.insert(0, ".symtab");
 
-        for statement in ast {
-            if let Node::Directive { pseudo_op, symbol } = &statement.node {
-                if pseudo_op == ".global" {
-                    strtab.add_str(&symbol);
-                    symtab.add_symbol(
-                        strtab.get_offset_by(&symbol).unwrap_or(0),
-                        SymType::NoType,
-                        SymBind::Global,
-                        SymVis::Default,
-                        1,
-                        0x0000000000000000,
-                        0
-                        );
-                }
-            }
+        for symbol in &symbols {
+            let name_offset = strtab.add_str(&symbol.name);
+            let bind = if symbol.global { SymBind::Global } else { SymBind::Local };
+            let value = machine_code.labels.get(&symbol.name).copied().unwrap_or(0);
+            symtab.add_symbol(name_offset, SymType::NoType, bind, SymVis::Default, 1, value, 0);
         }
     }
     let shstrtab = ShStrTab::new(&section_names);
@@ -44,7 +64,7 @@ pub fn build_object(ast: &[Statement], machine_code: &[u8]) -> Vec<u8> {
 
     // (name, type, flags, contents) in section header order
     let mut sections: Vec<(&str, SectionType, u64, Vec<u8>)> = vec![
-        (".text", SectionType::ProgBits, alloc | exec,  machine_code.to_vec()),
+        (".text", SectionType::ProgBits, alloc | exec,  machine_code.text.clone()),
         (".data", SectionType::ProgBits, write | alloc, Vec::new()),
         (".bss",  SectionType::NoBits,   write | alloc, Vec::new()),
     ];
@@ -70,6 +90,10 @@ pub fn build_object(ast: &[Statement], machine_code: &[u8]) -> Vec<u8> {
             // .symtab's sh_link points to the index of .strtab (+1 for the NULL section).
             let strtab_index = sections.iter().position(|(n, ..)| *n == ".strtab").unwrap() + 1;
             sh.set_link(strtab_index as u32);
+
+            // .symtab's sh_info is the index of the first global symbol (+1 for the NULL symbol).
+            let local_count = symbols.iter().filter(|symbol| !symbol.global).count();
+            sh.set_info((local_count + 1) as u32);
         }
         shs.push(sh);
 

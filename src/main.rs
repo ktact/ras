@@ -57,7 +57,7 @@ fn main() -> std::io::Result<()> {
         eprintln!("Error: {}: {}", input_file.display(), err);
         process::exit(1);
     });
-    let object = build_object(&ast, &machine_code.text);
+    let object = build_object(&ast, &machine_code);
 
     fs::write(output_file, object)
 }

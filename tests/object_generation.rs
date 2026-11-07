@@ -53,3 +53,8 @@ fn test_shoff_aligned_to_8() {
 fn test_symtab_alignment() {
     compare_object_files("symtab_alignment.s");
 }
+
+#[test]
+fn test_labels() {
+    compare_object_files("labels.s");
+}

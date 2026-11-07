@@ -92,6 +92,10 @@ impl Elf64SectionHeader {
         self.sh_link = link;
     }
 
+    pub fn set_info(&mut self, info: u32) {
+        self.sh_info = info;
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         super::struct_as_bytes(self)
     }
