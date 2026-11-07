@@ -112,6 +112,14 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
         (Mnemonic::Pop, [Operand::Register(dst)]) => Ok(encode_opcode_plus_register(0x58, *dst)),
         // 50+rd: PUSH r64 (see "PUSH—Push Word, Doubleword, or Quadword Onto the Stack")
         (Mnemonic::Push, [Operand::Register(src)]) => Ok(encode_opcode_plus_register(0x50, *src)),
+        (Mnemonic::Push, [Operand::Immediate(imm)]) => {
+            let imm32 = i32::try_from(*imm)
+                .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
+            // 68 id: PUSH imm32
+            let mut bytes = vec![0x68];
+            bytes.extend(imm32.to_le_bytes());
+            Ok(bytes)
+        }
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),
         _ => Err(CodegenErrorKind::UnsupportedOperands { mnemonic }),
     }

@@ -88,3 +88,8 @@ fn test_push_register() {
 fn test_pop_register() {
     compare_object_files("pop_register.s");
 }
+
+#[test]
+fn test_push_imm32() {
+    compare_object_files("push_imm32.s");
+}
