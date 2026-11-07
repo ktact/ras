@@ -108,6 +108,8 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
             bytes.extend(imm32.to_le_bytes());
             Ok(bytes)
         }
+        // 58+rd: POP r64 (see "POP—Pop a Value From the Stack")
+        (Mnemonic::Pop, [Operand::Register(dst)]) => Ok(encode_opcode_plus_register(0x58, *dst)),
         // 50+rd: PUSH r64 (see "PUSH—Push Word, Doubleword, or Quadword Onto the Stack")
         (Mnemonic::Push, [Operand::Register(src)]) => Ok(encode_opcode_plus_register(0x50, *src)),
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),

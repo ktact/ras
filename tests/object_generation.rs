@@ -83,3 +83,8 @@ fn test_mov_imm32() {
 fn test_push_register() {
     compare_object_files("push_register.s");
 }
+
+#[test]
+fn test_pop_register() {
+    compare_object_files("pop_register.s");
+}
