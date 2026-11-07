@@ -113,6 +113,12 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
         // 50+rd: PUSH r64 (see "PUSH—Push Word, Doubleword, or Quadword Onto the Stack")
         (Mnemonic::Push, [Operand::Register(src)]) => Ok(encode_opcode_plus_register(0x50, *src)),
         (Mnemonic::Push, [Operand::Immediate(imm)]) => {
+            // Both forms sign-extend the immediate to 64 bits. Like GNU as, use the
+            // shorter imm8 from whenever the value fits in a signed byte.
+            if let Ok(imm8) = i8::try_from(*imm) {
+                // 6A ib: PUSH imm8
+                return Ok(vec![0x6a, imm8 as u8]);
+            }
             let imm32 = i32::try_from(*imm)
                 .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
             // 68 id: PUSH imm32
