@@ -81,6 +81,22 @@ fn modrm_register(reg: u8, rm: Register) -> u8 {
     0xc0 | (reg << 3) | (rm as u8 & 0b111)
 }
 
+/// Encodes an instruction that has no ModRM byte and instead carries the register
+/// in the low 3 bits of the opcode, written as "+rd" in the manual.
+///
+/// As with ModRM.rm, the 4th bit of the register number goes to REX.B, so r8-r15
+/// need a REX prefix (0x41) and the others need none.
+///
+/// See 3.1.1.1 "Opcode Column in the Instruction Summary Table" and Table 3-1.
+fn encode_opcode_plus_register(opcode: u8, reg: Register) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    if reg as u8 >= 8 {
+        bytes.push(0x41);
+    }
+    bytes.push(opcode | (reg as u8 & 0b111));
+    bytes
+}
+
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
@@ -92,6 +108,8 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
             bytes.extend(imm32.to_le_bytes());
             Ok(bytes)
         }
+        // 50+rd: PUSH r64 (see "PUSH—Push Word, Doubleword, or Quadword Onto the Stack")
+        (Mnemonic::Push, [Operand::Register(src)]) => Ok(encode_opcode_plus_register(0x50, *src)),
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),
         _ => Err(CodegenErrorKind::UnsupportedOperands { mnemonic }),
     }
