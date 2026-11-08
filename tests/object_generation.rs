@@ -113,3 +113,8 @@ fn test_add_imm32() {
 fn test_add_rax_imm32() {
     compare_object_files("add_rax_imm32.s");
 }
+
+#[test]
+fn test_alu_imm() {
+    compare_object_files("alu_imm.s");
+}

@@ -20,20 +20,28 @@ pub enum Node {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Mnemonic {
     Add,
+    And,
+    Cmp,
     Mov,
+    Or,
     Pop,
     Push,
     Ret,
+    Sub,
 }
 
 impl fmt::Display for Mnemonic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Mnemonic::Add => "add",
+            Mnemonic::And => "and",
+            Mnemonic::Cmp => "cmp",
             Mnemonic::Mov => "mov",
+            Mnemonic::Or => "or",
             Mnemonic::Pop => "pop",
             Mnemonic::Push => "push",
             Mnemonic::Ret => "ret",
+            Mnemonic::Sub => "sub",
         };
         write!(f, "{}", name)
     }
@@ -43,10 +51,14 @@ impl Mnemonic {
     fn from_name(name: &str) -> Option<Self> {
         let mnemonic = match name {
             "add" => Mnemonic::Add,
+            "and" => Mnemonic::And,
+            "cmp" => Mnemonic::Cmp,
             "mov" => Mnemonic::Mov,
+            "or" => Mnemonic::Or,
             "pop" => Mnemonic::Pop,
             "push" => Mnemonic::Push,
             "ret" => Mnemonic::Ret,
+            "sub" => Mnemonic::Sub,
             _ => return None,
         };
         Some(mnemonic)

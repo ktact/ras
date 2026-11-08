@@ -129,6 +129,10 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
     match (mnemonic, operands) {
         // REX.W + 83 /0 ib, REX.W + 81 /0 id, REX.W + 05 id (see "ADD—Add")
         (Mnemonic::Add, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(0, *dst, *imm),
+        // REX.W + 83 /4 ib, REX.W + 81 /4 id, REX.W + 25 id (see "AND—Logical AND")
+        (Mnemonic::And, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(4, *dst, *imm),
+        // REX.W + 83 /7 ib, REX.W + 81 /7 id, REX.W + 3D id (see "CMP—Compare Two Operands")
+        (Mnemonic::Cmp, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(7, *dst, *imm),
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
             // The 32-bit immediate is sign-extended to 64 bits.
             let imm32 = i32::try_from(*imm)
@@ -138,6 +142,8 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
             bytes.extend(imm32.to_le_bytes());
             Ok(bytes)
         }
+        // REX.W + 83 /1 ib, REX.W + 81 /1 id, REX.W + 0D id (see "OR—Logical Inclusive OR")
+        (Mnemonic::Or, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(1, *dst, *imm),
         // 58+rd: POP r64 (see "POP—Pop a Value From the Stack")
         (Mnemonic::Pop, [Operand::Register(dst)]) => Ok(encode_opcode_plus_register(0x58, *dst)),
         // 50+rd: PUSH r64 (see "PUSH—Push Word, Doubleword, or Quadword Onto the Stack")
@@ -156,6 +162,8 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
             bytes.extend(imm32.to_le_bytes());
             Ok(bytes)
         }
+        // REX.W + 83 /5 ib, REX.W + 81 /5 id, REX.W + 2D id (see "SUB—Subtract")
+        (Mnemonic::Sub, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(5, *dst, *imm),
         (Mnemonic::Ret, []) => Ok(vec![0xc3]),
         _ => Err(CodegenErrorKind::UnsupportedOperands { mnemonic }),
     }
