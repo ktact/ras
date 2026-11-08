@@ -100,10 +100,17 @@ fn encode_opcode_plus_register(opcode: u8, reg: Register) -> Vec<u8> {
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
         (Mnemonic::Add, [Operand::Register(dst), Operand::Immediate(imm)]) => {
-            let imm8 = i8::try_from(*imm)
+            // Like GNU as, use the shorter imm8 form whenever the value fits in a signed byte.
+            if let Ok(imm8) = i8::try_from(*imm) {
+                // REX.W + 83 /0 ib: ADD r/m64, imm8 (see "ADD—Add")
+                return Ok(vec![rex_w(*dst), 0x83, modrm_register(0, *dst), imm8 as u8]);
+            }
+            let imm32 = i32::try_from(*imm)
                 .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
-            // REX.W + 83 /0 ib: ADD r/m64, imm8 (see "ADD—Add")
-            Ok(vec![rex_w(*dst), 0x83, modrm_register(0, *dst), imm8 as u8])
+            // REX.W + 81 /0 id: ADD r/m64, imm32
+            let mut bytes = vec![rex_w(*dst), 0x81, modrm_register(0, *dst)];
+            bytes.extend(imm32.to_le_bytes());
+            Ok(bytes)
         }
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
             // The 32-bit immediate is sign-extended to 64 bits.
