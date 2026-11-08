@@ -97,26 +97,38 @@ fn encode_opcode_plus_register(opcode: u8, reg: Register) -> Vec<u8> {
     bytes
 }
 
+/// Encodes `op r64, imm` for the arithmetic and logical instructions (ADD, OR, AND,
+/// SUB and CMP) that share one opcode pattern and differ only in `digit`, the
+/// opcode extension put in ModRM.reg:
+///
+/// | form              | opcode                      |
+/// |-------------------|-----------------------------|
+/// | `op r/m64, imm8`  | REX.W + 83 /digit ib        |
+/// | `op r/m64, imm32` | REX.W + 81 /digit id        |
+/// | `op RAX, imm32`   | REX.W + (digit * 8 + 05) id |
+///
+/// The RAX form needs no ModRM and is one byte shorter than the r/m64 form.
+/// Like GNU as, this picks the shortest form that fits: imm8 when the value fits in
+/// a signed byte, then the RAX form, then the r/m64 form.
+fn encode_alu_imm(digit: u8, dst: Register, imm: i64) -> Result<Vec<u8>, CodegenErrorKind> {
+    if let Ok(imm8) = i8::try_from(imm) {
+        return Ok(vec![rex_w(dst), 0x83, modrm_register(digit, dst), imm8 as u8]);
+    }
+    let imm32 = i32::try_from(imm)
+        .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: imm })?;
+    let mut bytes = if dst == Register::Rax {
+        vec![rex_w(dst), digit * 8 + 0x05]
+    } else {
+        vec![rex_w(dst), 0x81, modrm_register(digit, dst)]
+    };
+    bytes.extend(imm32.to_le_bytes());
+    Ok(bytes)
+}
+
 fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8>, CodegenErrorKind> {
     match (mnemonic, operands) {
-        (Mnemonic::Add, [Operand::Register(dst), Operand::Immediate(imm)]) => {
-            // Like GNU as, use the shorter imm8 form whenever the value fits in a signed byte.
-            if let Ok(imm8) = i8::try_from(*imm) {
-                // REX.W + 83 /0 ib: ADD r/m64, imm8 (see "ADD—Add")
-                return Ok(vec![rex_w(*dst), 0x83, modrm_register(0, *dst), imm8 as u8]);
-            }
-            let imm32 = i32::try_from(*imm)
-                .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
-            let mut bytes = if *dst == Register::Rax {
-                // REX.W + 05 id: ADD RAX, imm32 (one byte shorter, as it needs no ModRM)
-                vec![rex_w(*dst), 0x05]
-            } else {
-                // REX.W + 81 /0 id: ADD r/m64, imm32
-                vec![rex_w(*dst), 0x81, modrm_register(0, *dst)]
-            };
-            bytes.extend(imm32.to_le_bytes());
-            Ok(bytes)
-        }
+        // REX.W + 83 /0 ib, REX.W + 81 /0 id, REX.W + 05 id (see "ADD—Add")
+        (Mnemonic::Add, [Operand::Register(dst), Operand::Immediate(imm)]) => encode_alu_imm(0, *dst, *imm),
         (Mnemonic::Mov, [Operand::Register(dst), Operand::Immediate(imm)]) => {
             // The 32-bit immediate is sign-extended to 64 bits.
             let imm32 = i32::try_from(*imm)
