@@ -107,8 +107,13 @@ fn encode_instruction(mnemonic: Mnemonic, operands: &[Operand]) -> Result<Vec<u8
             }
             let imm32 = i32::try_from(*imm)
                 .map_err(|_| CodegenErrorKind::ImmediateOutOfRange { value: *imm })?;
-            // REX.W + 81 /0 id: ADD r/m64, imm32
-            let mut bytes = vec![rex_w(*dst), 0x81, modrm_register(0, *dst)];
+            let mut bytes = if *dst == Register::Rax {
+                // REX.W + 05 id: ADD RAX, imm32 (one byte shorter, as it needs no ModRM)
+                vec![rex_w(*dst), 0x05]
+            } else {
+                // REX.W + 81 /0 id: ADD r/m64, imm32
+                vec![rex_w(*dst), 0x81, modrm_register(0, *dst)]
+            };
             bytes.extend(imm32.to_le_bytes());
             Ok(bytes)
         }
